@@ -1,0 +1,29 @@
+AccessModifierOffset: -4
+AlignTrailingComments: true
+AllowAllParametersOfDeclarationOnNextLine: false
+AllowShortFunctionsOnASingleLine: false
+AllowShortIfStatementsOnASingleLine: false
+AllowShortLoopsOnASingleLine: false
+BinPackArguments: false 
+BinPackParameters: false
+BreakBeforeBinaryOperators: true
+BreakBeforeBraces: Attach
+ColumnLimit: 120
+ConstructorInitializerAllOnOneLineOrOnePerLine: true
+IncludeCategories:
+  - Regex:           '^\"((?!\/).)*\"$'
+    Priority:        1
+  - Regex:           '^(\<.*\/.*\>)$'
+    Priority:        2
+IndentCaseLabels: true
+IndentWidth: 4
+Language: Cpp
+MaxEmptyLinesToKeep: 2
+PenaltyBreakBeforeFirstCallParameter: 1000
+PenaltyReturnTypeOnItsOwnLine: 1000
+PointerBindsToType: true
+SortIncludes: true
+SpaceBeforeParens: Never
+SpacesInAngles : true
+SpacesInParentheses: true
+Standard: Cpp11

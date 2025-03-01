@@ -1,0 +1,2 @@
+..\VSCode-win32-x64-1.97.2\data\extensions\ms-vscode.cpptools-1.23.6-win32-x64\LLVM\bin\clang-format.exe -i src/*.cpp
+..\VSCode-win32-x64-1.97.2\data\extensions\ms-vscode.cpptools-1.23.6-win32-x64\LLVM\bin\clang-format.exe -i include/*.h
