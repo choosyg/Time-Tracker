@@ -1,7 +1,8 @@
 #include <Arduino.h>
 
-#include <Arduino_LSM9DS1.h>
+#include <Arduino_LSM9DS1.h> //IMU unit of nano 33 BLE
 
+//Headers for e-paper display
 #include <SPI.h>
 #include "epd1in54.h"
 #include "epdpaint.h"
@@ -18,13 +19,13 @@ unsigned long time_now_s;
 void setup() {
   Serial.begin(115200);    // initialize serial communication
 
-  Serial.print("IMU init ");
+  Serial.print("IMU init");
   if (!IMU.begin()) {
     Serial.println("Failed to initialize IMU!");
     while (1);
   }
 
-  Serial.print("e-Paper init ");
+  Serial.print("e-Paper init");
   if (epd.Init(lut_full_update) != 0) {
       Serial.print("e-Paper init failed");
       return;
