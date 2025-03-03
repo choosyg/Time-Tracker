@@ -13,8 +13,8 @@
 unsigned char image[1024];
 Paint paint(image, 0, 0);    // width should be the multiple of 8 
 Epd epd;
-unsigned long time_reset;
-unsigned long time_flip;
+
+unsigned long time_last;
 unsigned long time_now;
 
 unsigned long duration_top = 0;
@@ -22,25 +22,53 @@ unsigned long duration_left = 0;
 unsigned long duration_right = 0;
 unsigned long duration_bottom = 0;
 
-char[6] formatTime( unsigned long time_ms ){
-  char time_string[6] = {'0', '0', ':', '0', '0', '\0'};
-  time_string[0] = time_ms / 1000 / 60 / 10 + '0';
-  time_string[1] = time_ms / 1000 / 60 % 10 + '0';
-  time_string[3] = time_ms / 1000 % 60 / 10 + '0';
-  time_string[4] = time_ms / 1000 % 60 % 10 + '0';
-  return time_string;
+struct Position{
+  int x;
+  int y;
+  Position( int x_, int y_ ): x(x_), y(y_){}
+};
+
+Position position2Screen( const Position& pos ){
+  Position res = pos;
+  switch( paint.GetRotate()){
+    case ROTATE_90:  res.x = 200-pos.y-paint.GetWidth();
+                     res.y = pos.x;
+                     break;
+    case ROTATE_180:  res.x = 200-pos.x-paint.GetWidth();
+                      res.y = 200-pos.y-paint.GetHeight();
+                      break;
+    case ROTATE_270:  res.x = pos.y;
+                      res.y = 200-pos.x-paint.GetHeight();
+                      break;
+  }
+  return res;
 }
 
-void drawTime( unsigned long time_ms, int x, int y ){
-  paint.SetWidth(100);
-  paint.SetHeight(20);
+void drawTime( unsigned long time_ms, const Position& pos, sFONT* font ){
+  if( paint.GetRotate() == ROTATE_90 || paint.GetRotate() == ROTATE_270 ){
+    paint.SetWidth(font->Height);
+    paint.SetHeight(font->Width*8);
+  } else {
+    paint.SetWidth(font->Width*8);
+    paint.SetHeight(font->Height);
+  }
   
   paint.Clear(WHITE);
   
-  auto str = formatTime( time_ms );
-  paint.DrawStringAt(0, 0, str, &Font24, BLACK);
+  char time_string[] = {'0', '0', ':','0', '0', ':', '0', '0', '\0'};
+  time_string[0] = time_ms / 1000 / 60 / 60 / 10 + '0';
+  time_string[1] = time_ms / 1000 / 60 / 60 % 10 + '0';
+  time_string[3] = time_ms / 1000 / 60 / 10 + '0';
+  time_string[4] = time_ms / 1000 / 60 % 10 + '0';
+  time_string[6] = time_ms / 1000 % 60 / 10 + '0';
+  time_string[7] = time_ms / 1000 % 60 % 10 + '0';
+  paint.DrawStringAt(0, 0, time_string, font, BLACK);
+
+  Position screen = position2Screen( pos );
   
-  epd.SetFrameMemory(paint.GetImage(), x, y, paint.GetWidth(), paint.GetHeight());
+  epd.SetFrameMemory(paint.GetImage(), screen.x, screen.y, paint.GetWidth(), paint.GetHeight());
+  epd.DisplayFrame();
+  epd.SetFrameMemory(paint.GetImage(), screen.x, screen.y, paint.GetWidth(), paint.GetHeight());
   epd.DisplayFrame();
 }
 
@@ -49,18 +77,16 @@ void drawScreen() {
   paint.SetHeight(200);
 
   paint.Clear(WHITE);
-  paint.DrawRectangle(35, 35, 130, 130, BLACK);
+  paint.DrawRectangle(35, 35, 165, 165, BLACK);
   paint.DrawLine(0, 0, 35, 35, BLACK);
   paint.DrawLine(0, 200, 35, 200-35, BLACK);
   paint.DrawLine(200, 0, 200-35, 35, BLACK);
   paint.DrawLine(200, 200, 200-35, 200-35, BLACK);
-
-  //TODO fill top part BLACK
-  //TODO draw text in center (Date and reset_time)
   
-  epd.SetFrameMemory(paint.GetImage(), 16, 60, paint.GetWidth(), paint.GetHeight());
+  //set it to screen and to frame buffer
+  epd.SetFrameMemory(paint.GetImage(), 0, 0, paint.GetWidth(), paint.GetHeight());
   epd.DisplayFrame();
-  epd.SetFrameMemory(paint.GetImage(), 16, 60, paint.GetWidth(), paint.GetHeight());
+  epd.SetFrameMemory(paint.GetImage(), 0, 0, paint.GetWidth(), paint.GetHeight());
   epd.DisplayFrame();
 }
 
@@ -79,17 +105,6 @@ void setup() {
       return;
   }
 
-  /** 
-   *  there are 2 memory areas embedded in the e-paper display
-   *  and once the display is refreshed, the memory area will be auto-toggled,
-   *  i.e. the next action of SetFrameMemory will set the other memory area
-   *  therefore you have to clear the frame memory twice.
-   */
-  epd.ClearFrameMemory(0xFF);   // bit set = white, bit reset = black
-  epd.DisplayFrame();
-  epd.ClearFrameMemory(0xFF);   // bit set = white, bit reset = black
-  epd.DisplayFrame();
-  
   paint.SetRotate(ROTATE_0);
   drawScreen();
   
@@ -98,50 +113,89 @@ void setup() {
       return;
   }
 
-  time_reset = millis();
-  time_flip = millis();
+  time_last = millis();
   time_now = millis();
   //epd.Sleep();
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
-  float x, y, z, delta = 0.05;
-
+  
   if (IMU.accelerationAvailable())
   {
+    float x, y, z, delta = 0.1;
     IMU.readAcceleration(x, y, z);
- 
-    if(y <= delta && y >= -delta && rotation != ROTATE_0 ){
+    /*Serial.println("---------");
+    Serial.println(x);
+    Serial.println(y);
+    Serial.println(z);
+    Serial.println("---------");*/
+    auto rotate = paint.GetRotate();
+    if(z>=1-delta && rotate != ROTATE_0 ){
       Serial.println("Up-Face = TOP");
-      time_flip = millis();
-        
-      paint.SetRotate(ROTATE_0);
-      drawScreen();
-        
-      paint.SetRotate(ROTATE_90);
-      drawTime( duration_left, 4, 54 );
-      paint.SetRotate(ROTATE_180);
-      drawTime( duration_right, 200-4, 54 );
-      paint.SetRotate(ROTATE_270);
-      drawTime( duration_bottom, 54, 200-4 );
-        
-      paint.SetRotate(ROTATE_0);
-      drawTime( duration_top, 54, 4 );
-      
-    } else if(y >= 1 - delta){
+      rotate = ROTATE_0;
+    } else if( z<= -1+delta && rotate != ROTATE_180 ){
+      Serial.println("Up-Face = BOTTOM");
+      rotate = ROTATE_180;
+    }else if( y >= 1 - delta && rotate != ROTATE_270 ){
       Serial.println("Up-Face = LEFT");
-    } else if(y >= 1 - delta){
+      rotate = ROTATE_270;
+    } else if( y <= -1 + delta && rotate != ROTATE_90 ){
        Serial.println("Up-Face = RIGHT");
+       rotate = ROTATE_90;
+    }
+
+    if( rotate != paint.GetRotate() ){
+      drawScreen();
+      
+      //calc x such that time is centered:
+      Position pos( (200-Font24.Width*8)/2, (35-Font24.Height)/2);
+      paint.SetRotate(ROTATE_0);
+      drawTime( duration_top, pos, &Font24 );
+      paint.SetRotate(ROTATE_90);
+      drawTime( duration_left, pos, &Font24 );
+      paint.SetRotate(ROTATE_180);
+      drawTime( duration_bottom, pos, &Font24 );
+      paint.SetRotate(ROTATE_270);
+      drawTime( duration_right, pos, &Font24 );
+      
+      paint.SetRotate(rotate);
     }
   }
 
-  drawTime( duration_top, 54, 4 );
+  time_now = millis();
+  Position pos( (200-Font24.Width*8)/2, (35-Font24.Height)/2 );
+  switch( paint.GetRotate() ){
+    case ROTATE_0: duration_top += time_now-time_last;
+                   drawTime( duration_top, pos, &Font24 );
+                   break;
+    case ROTATE_90: duration_left += time_now-time_last;
+                   drawTime( duration_left, pos, &Font24 );
+                   break;
+    case ROTATE_180: duration_bottom += time_now-time_last;
+                   drawTime( duration_bottom, pos, &Font24 );
+                   break;
+    case ROTATE_270: duration_right += time_now-time_last;
+                   drawTime( duration_right, pos, &Font24 );
+                   break;
+  }
+  time_last = time_now;
+
+  Position center( (200-Font20.Width*8)/2, (200-Font20.Height)/2 );
+  drawTime( duration_top+duration_left+duration_bottom+duration_right, center, &Font20 );
+
+  /*paint.SetHeight(Font24.Height);
+  paint.SetWidth(Font24.Width*2);
+  paint.Clear(WHITE);
+  paint.DrawStringAt(0, 0, "TL", &Font24, BLACK);
+  epd.SetFrameMemory(paint.GetImage(), x, y, paint.GetWidth(), paint.GetHeight());
+  epd.DisplayFrame();
+
+  drawTime( duration_top, 35, 0 );*/
   //TODO draw total duration
   //TODO draw temperature & humidity
   
-  epd.SetFrameMemory(paint.GetImage(), 80, 72, paint.GetWidth(), paint.GetHeight());
-  epd.DisplayFrame();
+  //epd.SetFrameMemory(paint.GetImage(), 80, 72, paint.GetWidth(), paint.GetHeight());
+  //epd.DisplayFrame();
 
   delay(500);
 }
