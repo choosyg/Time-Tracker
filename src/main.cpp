@@ -107,6 +107,15 @@ void setup() {
 
   paint.SetRotate(ROTATE_0);
   drawScreen();
+
+  Position pos( (200-Font24.Width*8)/2, (35-Font24.Height)/2);
+  drawTime( duration_top, pos, &Font24 );
+  paint.SetRotate(ROTATE_90);
+  drawTime( duration_left, pos, &Font24 );
+  paint.SetRotate(ROTATE_180);
+  drawTime( duration_bottom, pos, &Font24 );
+  paint.SetRotate(ROTATE_270);
+  drawTime( duration_right, pos, &Font24 );
   
   if (epd.Init(lut_partial_update) != 0) {
       Serial.print("e-Paper init failed");
@@ -115,6 +124,7 @@ void setup() {
 
   time_last = millis();
   time_now = millis();
+  paint.SetRotate( -1 );
   //epd.Sleep();
 }
 
@@ -132,22 +142,22 @@ void loop() {
     auto rotate = paint.GetRotate();
     if(z>=1-delta && rotate != ROTATE_0 ){
       Serial.println("Up-Face = TOP");
-      rotate = ROTATE_0;
+      paint.SetRotate( ROTATE_0 );
     } else if( z<= -1+delta && rotate != ROTATE_180 ){
       Serial.println("Up-Face = BOTTOM");
-      rotate = ROTATE_180;
+      paint.SetRotate( ROTATE_180 );
     }else if( y >= 1 - delta && rotate != ROTATE_270 ){
       Serial.println("Up-Face = LEFT");
-      rotate = ROTATE_270;
+      paint.SetRotate( ROTATE_270 );
     } else if( y <= -1 + delta && rotate != ROTATE_90 ){
        Serial.println("Up-Face = RIGHT");
-       rotate = ROTATE_90;
-    }
-
-    if( rotate != paint.GetRotate() ){
-      drawScreen();
-      
-      //calc x such that time is centered:
+       paint.SetRotate( ROTATE_90 );
+    } else if ( x<=-1+delta ) {
+      Serial.println("Reset Down-Face = Display");
+      duration_bottom = 0;
+      duration_left = 0;
+      duration_right = 0;
+      duration_top = 0;
       Position pos( (200-Font24.Width*8)/2, (35-Font24.Height)/2);
       paint.SetRotate(ROTATE_0);
       drawTime( duration_top, pos, &Font24 );
@@ -157,8 +167,23 @@ void loop() {
       drawTime( duration_bottom, pos, &Font24 );
       paint.SetRotate(ROTATE_270);
       drawTime( duration_right, pos, &Font24 );
-      
-      paint.SetRotate(rotate);
+      time_last = millis();
+      paint.SetRotate( -1 );
+    }
+
+    //clear center if rotation changed
+    if( rotate != paint.GetRotate() && paint.GetRotate() != -1 ){
+      auto rot = paint.GetRotate();
+      paint.SetRotate( ROTATE_0 );
+      paint.SetWidth(130);
+      paint.SetHeight(130);
+      paint.Clear(WHITE);
+      paint.DrawRectangle(0,0,paint.GetWidth()-1,paint.GetWidth()-1, BLACK);
+      epd.SetFrameMemory(paint.GetImage(), 35, 35, paint.GetWidth(), paint.GetHeight());
+      epd.DisplayFrame();
+      epd.SetFrameMemory(paint.GetImage(), 35, 35, paint.GetWidth(), paint.GetHeight());
+      epd.DisplayFrame();
+      paint.SetRotate( rot );
     }
   }
 
@@ -183,19 +208,8 @@ void loop() {
   Position center( (200-Font20.Width*8)/2, (200-Font20.Height)/2 );
   drawTime( duration_top+duration_left+duration_bottom+duration_right, center, &Font20 );
 
-  /*paint.SetHeight(Font24.Height);
-  paint.SetWidth(Font24.Width*2);
-  paint.Clear(WHITE);
-  paint.DrawStringAt(0, 0, "TL", &Font24, BLACK);
-  epd.SetFrameMemory(paint.GetImage(), x, y, paint.GetWidth(), paint.GetHeight());
-  epd.DisplayFrame();
-
-  drawTime( duration_top, 35, 0 );*/
-  //TODO draw total duration
-  //TODO draw temperature & humidity
   
-  //epd.SetFrameMemory(paint.GetImage(), 80, 72, paint.GetWidth(), paint.GetHeight());
-  //epd.DisplayFrame();
+  //TODO draw temperature & humidity & Date
 
   delay(500);
 }
