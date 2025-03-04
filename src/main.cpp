@@ -7,91 +7,210 @@
 #include "epd1in54.h"
 #include "epdpaint.h"
 
-#define BLACK   0
-#define WHITE   1
-
-unsigned char image[1024];
-Paint paint(image, 0, 0);    // width should be the multiple of 8 
-Epd epd;
-
-unsigned long time_last;
-unsigned long time_now;
-
-unsigned long duration_top = 0;
-unsigned long duration_left = 0;
-unsigned long duration_right = 0;
-unsigned long duration_bottom = 0;
-
 struct Position{
   int x;
   int y;
   Position( int x_, int y_ ): x(x_), y(y_){}
 };
 
-Position position2Screen( const Position& pos ){
-  Position res = pos;
-  switch( paint.GetRotate()){
-    case ROTATE_90:  res.x = 200-pos.y-paint.GetWidth();
-                     res.y = pos.x;
+const int BLACK = 0;
+const int WHITE = 1;
+enum class FACE { TOP=0, BOTTOM=1, LEFT=2, RIGHT=3, FRONT=4, BACK=5 };
+
+class Field{
+  public:
+    //center given in "visual" coordinates, not logical display coords. Means the origin is the corner of the display that is currently visually top/left
+	// Upface describes the current upper side of the Cube
+    Field( const Position& center, FACE upface ): center_(center), upface_(upface), paint_(image_,0,0){
+    }
+
+    const Position& center() const { return center_; }
+    void setCenter( const Position &center ){ 
+      center_ = center; 
+    }
+
+    FACE upface() const { return upface_ }
+    void setUpface( FACE upface ){
+      upface_ = upface;
+    }
+
+    void setText( const char* str ){
+      str_ = str;
+    }
+	
+	void wipe( Epd& epd, sFont* font ){
+		std::string backup = str_;
+		draw( epd, font );
+		str_ = backup;
+	}
+
+    void draw( Epd& epd, sFont* font ){
+	  if( upface_ >= FACE::FRONT ){
+		return;
+	  }
+      int w = font->Width * str_.length();
+      int h = font->Height;
+      switch( upface_ ){
+        case TOP: paint_.SetRotate( ROTATE_0 ); 
+                  paint_.SetWidth( w ); 
+                  paint_.SetHeight( h ); 
+                  break;
+        case BOTTOM: paint_.SetRotate( ROTATE_180 ); 
+                     paint_.SetWidth( w ); 
+                     paint_.SetHeight( h ); 
                      break;
-    case ROTATE_180:  res.x = 200-pos.x-paint.GetWidth();
-                      res.y = 200-pos.y-paint.GetHeight();
-                      break;
-    case ROTATE_270:  res.x = pos.y;
-                      res.y = 200-pos.x-paint.GetHeight();
-                      break;
+        case LEFT: paint_.SetRotate( ROTATE_270 ); 
+                   paint_.SetWidth( h ); 
+                   paint_.SetHeight( w ); 
+                   break;
+        case RIGHT: paint_.SetRotate( ROTATE_90 ); 
+                    paint_.SetWidth( h ); 
+                    paint_.SetHeight( w ); 
+                    break;
+      }
+	  paint_.Clear( WHITE );
+      paint_.DrawStringAt(0, 0, str_.c_str(), font, BLACK);
+      
+	  Position topleft = center_;
+	  topleft.x -= paint.GetWidth() / 2;
+	  topleft.y -= paint.GetHeight() /2
+	  Position pos;
+      switch( upface_ ){
+		case FACE::TOP: pos = topleft;
+        case FACE::BOTTOM: pos.x = 200-topleft.x-paint_.GetWidth();
+                     pos.y = 200-topleft.y-paint_.GetHeight();
+                     break;
+        case FACE::LEFT:   pos.x = topleft.y;
+                     pos.y = 200-topleft.x-paint_.GetHeight();
+                     break;
+        case FACE::RIGHT:  pos.x = 200-topleft.y-paint_.GetWidth();
+                     pos.y = topleft.x;
+                     break;
+      }
+      
+      epd.SetFrameMemory(paint_.GetImage(), pos.x, pos.y, paint_.GetWidth(), paint_.GetHeight());
+    }
+  private:
+    unsigned char image_[1024];
+    Paint paint_;
+    Position center_;
+    FACE upface_;
+    std::string str_;
+  };
+
+
+class Display{
+public:
+  Display() :
+    faceField_[0]( Position(100,17), FACE::TOP ),
+    faceField_[1]( Position(100,17), FACE::BOTTOM ),
+    faceField_[2]( Position(100,17), FACE::LEFT ),
+    faceField_[3]( Position(100,17), FACE::RIGHT ),
+    total_( Position(100,100), FACE::TOP )
+  {  
   }
-  return res;
-}
+  
+  void setup(){
+    Serial.print("e-Paper init");
+    if (epd_.Init(lut_full_update) != 0) {
+      Serial.print("e-Paper init failed");
+      return;
+    }
+    
+    unsigned char image[1024];
+    Paint paint(image, 0, 0);
+    paint.SetRotate( ROTATE_0 );
+    paint.SetWidth(200);
+    paint.SetHeight(200);
+    paint.Clear(WHITE);
+    paint.DrawRectangle(35, 35, 165, 165, BLACK);
+    paint.DrawLine(0, 0, 35, 35, BLACK);
+    paint.DrawLine(0, 200, 35, 200-35, BLACK);
+    paint.DrawLine(200, 0, 200-35, 35, BLACK);
+    paint.DrawLine(200, 200, 200-35, 200-35, BLACK);
 
-void drawTime( unsigned long time_ms, const Position& pos, sFONT* font ){
-  if( paint.GetRotate() == ROTATE_90 || paint.GetRotate() == ROTATE_270 ){
-    paint.SetWidth(font->Height);
-    paint.SetHeight(font->Width*8);
-  } else {
-    paint.SetWidth(font->Width*8);
-    paint.SetHeight(font->Height);
+    for( size_t i=0; i<4; ++i ) faceField_[i].setText( "00:00:00" );
+	total_.setText( "00:00:00" );
+    
+    //set it to screen and to frame buffer
+    epd_.SetFrameMemory(paint.GetImage(), 0, 0, paint.GetWidth(), paint.GetHeight());
+    for( size_t i=0; i<4; ++i ) faceField_[i].draw( epd_, &Font24 );
+    total_.draw( epd_, &Font24 );
+    epd_.DisplayFrame();
+	
+    epd_.SetFrameMemory(paint.GetImage(), 0, 0, paint.GetWidth(), paint.GetHeight());
+    for( size_t i=0; i<4; ++i ) faceField_[i].draw( epd_, &Font24 );
+	total_.draw( epd_, &Font24 );
   }
   
-  paint.Clear(WHITE);
+  void setFaceDuration( unsigned long ms, FACE face ){
+	if( upface_ >= FACE::FRONT ){
+	  return;
+	}
+	faceField_[face].setText( formatTime( ms ) );
+    faceField_[face].draw( epd_, &Font24 );
+    epd.DisplayFrame();
+    faceField_[face].draw( epd_, &Font24 );
+  }
   
-  char time_string[] = {'0', '0', ':','0', '0', ':', '0', '0', '\0'};
-  time_string[0] = time_ms / 1000 / 60 / 60 / 10 + '0';
-  time_string[1] = time_ms / 1000 / 60 / 60 % 10 + '0';
-  time_string[3] = time_ms / 1000 / 60 / 10 + '0';
-  time_string[4] = time_ms / 1000 / 60 % 10 + '0';
-  time_string[6] = time_ms / 1000 % 60 / 10 + '0';
-  time_string[7] = time_ms / 1000 % 60 % 10 + '0';
-  paint.DrawStringAt(0, 0, time_string, font, BLACK);
+  void setTotalDuration( unsigned long ms ){
+    total_.setText( formatTime( ms ) );
+    total_.draw( epd_, &Font20 );
+    epd.DisplayFrame();
+    total_.draw( epd_, &Font20 );
+  }
+  
+  FACE upface() const {
+	  return total_.upface();
+  }
+  
+  void setUpface( FACE upface ){
+	if( upface == total_.upface() ){
+	  return;
+	}
+	if( upface >= FACE::FRONT ){
+	  total_.setUpface( upface );
+	  return;
+	}
+	total_.wipe( epd_, &Font20 );
+    epd.DisplayFrame();
+    total_.wipe( epd_, &Font20 );	
+	
+	total_.setUpface( upface ); 
+	
+    total_.draw( epd_, &Font20 );
+    epd.DisplayFrame();
+    total_.draw( epd_, &Font20 );	
+  }
+  
+private:
+  std::string format( unsigned long n ){
+	  if( n<10 ) {
+		  return std::string("0") + std::string::to_string(n);
+	  }
+	  return std::string::to_string(n);
+  }
+  std::string formatTime( unsigned long ms ){
+    unsigned long hours = ms / (1000 * 60 * 60);
+    ms -= hours*60*60*1000;
+    unsigned long minutes = ms / (1000*60);
+    ms -= minutes*60*1000;
+    unsigned long seconds = ms / 1000;
+	return format( hours ) + ":" + formar( minutes ) + ":" + format( seconds );
+  }
 
-  Position screen = position2Screen( pos );
-  
-  epd.SetFrameMemory(paint.GetImage(), screen.x, screen.y, paint.GetWidth(), paint.GetHeight());
-  epd.DisplayFrame();
-  epd.SetFrameMemory(paint.GetImage(), screen.x, screen.y, paint.GetWidth(), paint.GetHeight());
-  epd.DisplayFrame();
+  Field[4] faceField_;
+  Field total_;
+  Epd epd_;
 }
 
-void drawScreen() {
-  paint.SetWidth(200);
-  paint.SetHeight(200);
 
-  paint.Clear(WHITE);
-  paint.DrawRectangle(35, 35, 165, 165, BLACK);
-  paint.DrawLine(0, 0, 35, 35, BLACK);
-  paint.DrawLine(0, 200, 35, 200-35, BLACK);
-  paint.DrawLine(200, 0, 200-35, 35, BLACK);
-  paint.DrawLine(200, 200, 200-35, 200-35, BLACK);
-  
-  //set it to screen and to frame buffer
-  epd.SetFrameMemory(paint.GetImage(), 0, 0, paint.GetWidth(), paint.GetHeight());
-  epd.DisplayFrame();
-  epd.SetFrameMemory(paint.GetImage(), 0, 0, paint.GetWidth(), paint.GetHeight());
-  epd.DisplayFrame();
-}
+unsigned long time_last;
+unsigned long[4] faceDuration = {0,0,0,0};
+Display display;
 
 void setup() {
-  Serial.begin(115200);    // initialize serial communication
+  Serial.begin(115200);
 
   Serial.print("IMU init");
   if (!IMU.begin()) {
@@ -99,33 +218,9 @@ void setup() {
     while (1);
   }
 
-  Serial.print("e-Paper init");
-  if (epd.Init(lut_full_update) != 0) {
-      Serial.print("e-Paper init failed");
-      return;
-  }
-
-  paint.SetRotate(ROTATE_0);
-  drawScreen();
-
-  Position pos( (200-Font24.Width*8)/2, (35-Font24.Height)/2);
-  drawTime( duration_top, pos, &Font24 );
-  paint.SetRotate(ROTATE_90);
-  drawTime( duration_left, pos, &Font24 );
-  paint.SetRotate(ROTATE_180);
-  drawTime( duration_bottom, pos, &Font24 );
-  paint.SetRotate(ROTATE_270);
-  drawTime( duration_right, pos, &Font24 );
-  
-  if (epd.Init(lut_partial_update) != 0) {
-      Serial.print("e-Paper init failed");
-      return;
-  }
-
+  display.setup();
   time_last = millis();
   time_now = millis();
-  paint.SetRotate( -1 );
-  //epd.Sleep();
 }
 
 void loop() {
@@ -134,82 +229,44 @@ void loop() {
   {
     float x, y, z, delta = 0.1;
     IMU.readAcceleration(x, y, z);
-    /*Serial.println("---------");
-    Serial.println(x);
-    Serial.println(y);
-    Serial.println(z);
-    Serial.println("---------");*/
-    auto rotate = paint.GetRotate();
-    if(z>=1-delta && rotate != ROTATE_0 ){
+
+    if(z>=1-delta ){
       Serial.println("Up-Face = TOP");
-      paint.SetRotate( ROTATE_0 );
-    } else if( z<= -1+delta && rotate != ROTATE_180 ){
+      display.setUpface( FACE::TOP );
+    } else if( z<= -1+delta ){
       Serial.println("Up-Face = BOTTOM");
-      paint.SetRotate( ROTATE_180 );
-    }else if( y >= 1 - delta && rotate != ROTATE_270 ){
+      display.setUpface( FACE::BOTTOM );
+    }else if( y >= 1 - delta ){
       Serial.println("Up-Face = LEFT");
-      paint.SetRotate( ROTATE_270 );
-    } else if( y <= -1 + delta && rotate != ROTATE_90 ){
+      display.setUpface( FACE::LEFT );
+    } else if( y <= -1 + delta ){
        Serial.println("Up-Face = RIGHT");
-       paint.SetRotate( ROTATE_90 );
+       display.setUpface( FACE::RIGHT );
     } else if ( x<=-1+delta ) {
       Serial.println("Reset Down-Face = Display");
-      duration_bottom = 0;
-      duration_left = 0;
-      duration_right = 0;
-      duration_top = 0;
-      Position pos( (200-Font24.Width*8)/2, (35-Font24.Height)/2);
-      paint.SetRotate(ROTATE_0);
-      drawTime( duration_top, pos, &Font24 );
-      paint.SetRotate(ROTATE_90);
-      drawTime( duration_left, pos, &Font24 );
-      paint.SetRotate(ROTATE_180);
-      drawTime( duration_bottom, pos, &Font24 );
-      paint.SetRotate(ROTATE_270);
-      drawTime( duration_right, pos, &Font24 );
-      time_last = millis();
-      paint.SetRotate( -1 );
-    }
-
-    //clear center if rotation changed
-    if( rotate != paint.GetRotate() && paint.GetRotate() != -1 ){
-      auto rot = paint.GetRotate();
-      paint.SetRotate( ROTATE_0 );
-      paint.SetWidth(130);
-      paint.SetHeight(130);
-      paint.Clear(WHITE);
-      paint.DrawRectangle(0,0,paint.GetWidth()-1,paint.GetWidth()-1, BLACK);
-      epd.SetFrameMemory(paint.GetImage(), 35, 35, paint.GetWidth(), paint.GetHeight());
-      epd.DisplayFrame();
-      epd.SetFrameMemory(paint.GetImage(), 35, 35, paint.GetWidth(), paint.GetHeight());
-      epd.DisplayFrame();
-      paint.SetRotate( rot );
+	  for( size_t i=0; i<4; ++i ){
+	    faceDuration[i]=0;
+		display.setFaceDuration( 0, i );
+	  }
+	  display.setTotalDuration( 0 );
+	  
+	  display.setUpface( FACE::BACK );
     }
   }
 
-  time_now = millis();
-  Position pos( (200-Font24.Width*8)/2, (35-Font24.Height)/2 );
-  switch( paint.GetRotate() ){
-    case ROTATE_0: duration_top += time_now-time_last;
-                   drawTime( duration_top, pos, &Font24 );
-                   break;
-    case ROTATE_90: duration_left += time_now-time_last;
-                   drawTime( duration_left, pos, &Font24 );
-                   break;
-    case ROTATE_180: duration_bottom += time_now-time_last;
-                   drawTime( duration_bottom, pos, &Font24 );
-                   break;
-    case ROTATE_270: duration_right += time_now-time_last;
-                   drawTime( duration_right, pos, &Font24 );
-                   break;
+  if( display.upface() == FACE::BACK ){
+	  time_last = millis();
+	  return;
   }
+  
+  unsigned long time_now = millis();
+  faceDuration[ display.upface() ] += time_now-time_last;
+  display.setFaceDuration( faceDuration[ display.upface() ], display.upface() );
   time_last = time_now;
 
-  Position center( (200-Font20.Width*8)/2, (200-Font20.Height)/2 );
-  drawTime( duration_top+duration_left+duration_bottom+duration_right, center, &Font20 );
-
+  display.setTotalDuration( faceDuration[ 0 ]+faceDuration[ 1 ]+faceDuration[ 2 ]+faceDuration[ 3 ] );
   
   //TODO draw temperature & humidity & Date
 
-  delay(500);
+  delay(100);
 }
