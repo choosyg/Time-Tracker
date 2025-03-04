@@ -101,11 +101,6 @@ class Field{
     std::string str_;
   };
 
-
-unsigned char image[1024];
-Paint paint(image, 0, 0);
-Epd epd_;
-
 class Display{
 public:
   Display() :
@@ -122,8 +117,8 @@ public:
       return;
     }
      
-    //unsigned char* image = new unsigned char[1024];
-    //Paint paint(image, 0, 0);
+    unsigned char* image = new unsigned char[1024];
+    Paint paint(image, 0, 0);
     paint.SetRotate( ROTATE_0 );
     paint.SetWidth(200);
     paint.SetHeight(200);
@@ -144,11 +139,11 @@ public:
     epd_.DisplayFrame();
 	
     epd_.SetFrameMemory(paint.GetImage(), 0, 0, paint.GetWidth(), paint.GetHeight());
-    //delete[] image;
+    delete[] image;
     //for( size_t i=0; i<4; ++i ) faceField_[i].draw( epd_, &Font24 );
 	  //total_.draw( epd_, &Font24 );
     epd_.DisplayFrame();
-return;
+
     if (epd_.Init(lut_partial_update) != 0) {
       Serial.print("e-Paper init failed");
       return;
@@ -213,7 +208,7 @@ private:
 
   Field faceField_[4];
   Field total_;
-  //Epd epd_;
+  Epd epd_;
 };
 
 
@@ -230,40 +225,7 @@ void setup() {
     while (1);
   }
 
-  Serial.print("e-Paper init");
-    if (epd_.Init(lut_full_update) != 0) {
-      Serial.print("e-Paper init failed");
-      return;
-    }
-     
-    //unsigned char* image = new unsigned char[1024];
-    //Paint paint(image, 0, 0);
-    paint.SetRotate( ROTATE_0 );
-    paint.SetWidth(200);
-    paint.SetHeight(200);
-    paint.Clear(WHITE);
-    paint.DrawRectangle(35, 35, 165, 165, BLACK);
-    paint.DrawLine(0, 0, 35, 35, BLACK);
-    paint.DrawLine(0, 200, 35, 200-35, BLACK);
-    paint.DrawLine(200, 0, 200-35, 35, BLACK);
-    paint.DrawLine(200, 200, 200-35, 200-35, BLACK);
-    
-    //for( size_t i=0; i<4; ++i ) faceField_[i].setText( "00:00:00" );
-	  //total_.setText( "00:00:00" );
-    
-    //set it to screen and to frame buffer
-    epd_.SetFrameMemory(paint.GetImage(), 0, 0, paint.GetWidth(), paint.GetHeight());
-    //for( size_t i=0; i<4; ++i ) faceField_[i].draw( epd_, &Font24 );
-    //total_.draw( epd_, &Font24 );
-    epd_.DisplayFrame();
-	
-    epd_.SetFrameMemory(paint.GetImage(), 0, 0, paint.GetWidth(), paint.GetHeight());
-    //delete[] image;
-    //for( size_t i=0; i<4; ++i ) faceField_[i].draw( epd_, &Font24 );
-	  //total_.draw( epd_, &Font24 );
-    epd_.DisplayFrame();
-
-  //display.setup();
+  display.setup();
   time_last = millis();
 }
 
