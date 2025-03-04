@@ -1,4 +1,6 @@
 #include <Arduino.h>
+#include <string>
+#include <array>
 
 #include <Arduino_LSM9DS1.h> //IMU unit of nano 33 BLE
 
@@ -10,6 +12,7 @@
 struct Position{
   int x;
   int y;
+  Position() = default;
   Position( int x_, int y_ ): x(x_), y(y_){}
 };
 
@@ -29,51 +32,51 @@ class Field{
       center_ = center; 
     }
 
-    FACE upface() const { return upface_ }
+    FACE upface() const { return upface_; }
     void setUpface( FACE upface ){
       upface_ = upface;
     }
 
-    void setText( const char* str ){
+    void setText( const std::string& str ){
       str_ = str;
     }
 	
-	void wipe( Epd& epd, sFont* font ){
+	void wipe( Epd& epd, sFONT* font ){
 		std::string backup = str_;
 		draw( epd, font );
 		str_ = backup;
 	}
 
-    void draw( Epd& epd, sFont* font ){
+    void draw( Epd& epd, sFONT* font ){
 	  if( upface_ >= FACE::FRONT ){
-		return;
+		  return;
 	  }
       int w = font->Width * str_.length();
       int h = font->Height;
       switch( upface_ ){
-        case TOP: paint_.SetRotate( ROTATE_0 ); 
+        case FACE::TOP: paint_.SetRotate( ROTATE_0 ); 
                   paint_.SetWidth( w ); 
                   paint_.SetHeight( h ); 
                   break;
-        case BOTTOM: paint_.SetRotate( ROTATE_180 ); 
+        case FACE::BOTTOM: paint_.SetRotate( ROTATE_180 ); 
                      paint_.SetWidth( w ); 
                      paint_.SetHeight( h ); 
                      break;
-        case LEFT: paint_.SetRotate( ROTATE_270 ); 
+        case FACE::LEFT: paint_.SetRotate( ROTATE_270 ); 
                    paint_.SetWidth( h ); 
                    paint_.SetHeight( w ); 
                    break;
-        case RIGHT: paint_.SetRotate( ROTATE_90 ); 
+        case FACE::RIGHT: paint_.SetRotate( ROTATE_90 ); 
                     paint_.SetWidth( h ); 
                     paint_.SetHeight( w ); 
                     break;
       }
-	  paint_.Clear( WHITE );
+	    paint_.Clear( WHITE );
       paint_.DrawStringAt(0, 0, str_.c_str(), font, BLACK);
       
 	  Position topleft = center_;
-	  topleft.x -= paint.GetWidth() / 2;
-	  topleft.y -= paint.GetHeight() /2
+	  topleft.x -= paint_.GetWidth() / 2;
+	  topleft.y -= paint_.GetHeight() /2;
 	  Position pos;
       switch( upface_ ){
 		case FACE::TOP: pos = topleft;
@@ -92,33 +95,35 @@ class Field{
     }
   private:
     unsigned char image_[1024];
-    Paint paint_;
     Position center_;
     FACE upface_;
+    Paint paint_;
     std::string str_;
   };
 
 
+unsigned char image[1024];
+Paint paint(image, 0, 0);
+Epd epd_;
+
 class Display{
 public:
   Display() :
-    faceField_[0]( Position(100,17), FACE::TOP ),
-    faceField_[1]( Position(100,17), FACE::BOTTOM ),
-    faceField_[2]( Position(100,17), FACE::LEFT ),
-    faceField_[3]( Position(100,17), FACE::RIGHT ),
+    faceField_{Field( Position(100,17), FACE::TOP ),Field( Position(100,17), FACE::BOTTOM ),Field( Position(100,17), FACE::LEFT ),Field( Position(100,17), FACE::RIGHT )},
     total_( Position(100,100), FACE::TOP )
   {  
   }
   
   void setup(){
+
     Serial.print("e-Paper init");
     if (epd_.Init(lut_full_update) != 0) {
       Serial.print("e-Paper init failed");
       return;
     }
-    
-    unsigned char image[1024];
-    Paint paint(image, 0, 0);
+     
+    //unsigned char* image = new unsigned char[1024];
+    //Paint paint(image, 0, 0);
     paint.SetRotate( ROTATE_0 );
     paint.SetWidth(200);
     paint.SetHeight(200);
@@ -128,35 +133,42 @@ public:
     paint.DrawLine(0, 200, 35, 200-35, BLACK);
     paint.DrawLine(200, 0, 200-35, 35, BLACK);
     paint.DrawLine(200, 200, 200-35, 200-35, BLACK);
-
-    for( size_t i=0; i<4; ++i ) faceField_[i].setText( "00:00:00" );
-	total_.setText( "00:00:00" );
+    
+    //for( size_t i=0; i<4; ++i ) faceField_[i].setText( "00:00:00" );
+	  //total_.setText( "00:00:00" );
     
     //set it to screen and to frame buffer
     epd_.SetFrameMemory(paint.GetImage(), 0, 0, paint.GetWidth(), paint.GetHeight());
-    for( size_t i=0; i<4; ++i ) faceField_[i].draw( epd_, &Font24 );
-    total_.draw( epd_, &Font24 );
+    //for( size_t i=0; i<4; ++i ) faceField_[i].draw( epd_, &Font24 );
+    //total_.draw( epd_, &Font24 );
     epd_.DisplayFrame();
 	
     epd_.SetFrameMemory(paint.GetImage(), 0, 0, paint.GetWidth(), paint.GetHeight());
-    for( size_t i=0; i<4; ++i ) faceField_[i].draw( epd_, &Font24 );
-	total_.draw( epd_, &Font24 );
+    //delete[] image;
+    //for( size_t i=0; i<4; ++i ) faceField_[i].draw( epd_, &Font24 );
+	  //total_.draw( epd_, &Font24 );
+    epd_.DisplayFrame();
+return;
+    if (epd_.Init(lut_partial_update) != 0) {
+      Serial.print("e-Paper init failed");
+      return;
+    }
   }
   
-  void setFaceDuration( unsigned long ms, FACE face ){
-	if( upface_ >= FACE::FRONT ){
+  void setFaceDuration( unsigned long ms, FACE upface ){
+	if( upface >= FACE::FRONT ){
 	  return;
 	}
-	faceField_[face].setText( formatTime( ms ) );
-    faceField_[face].draw( epd_, &Font24 );
-    epd.DisplayFrame();
-    faceField_[face].draw( epd_, &Font24 );
+	faceField_[static_cast<int>(upface)].setText( formatTime( ms ) );
+    faceField_[static_cast<int>(upface)].draw( epd_, &Font24 );
+    epd_.DisplayFrame();
+    faceField_[static_cast<int>(upface)].draw( epd_, &Font24 );
   }
   
   void setTotalDuration( unsigned long ms ){
     total_.setText( formatTime( ms ) );
     total_.draw( epd_, &Font20 );
-    epd.DisplayFrame();
+    epd_.DisplayFrame();
     total_.draw( epd_, &Font20 );
   }
   
@@ -173,22 +185,22 @@ public:
 	  return;
 	}
 	total_.wipe( epd_, &Font20 );
-    epd.DisplayFrame();
+    epd_.DisplayFrame();
     total_.wipe( epd_, &Font20 );	
 	
 	total_.setUpface( upface ); 
 	
     total_.draw( epd_, &Font20 );
-    epd.DisplayFrame();
+    epd_.DisplayFrame();
     total_.draw( epd_, &Font20 );	
   }
   
 private:
   std::string format( unsigned long n ){
 	  if( n<10 ) {
-		  return std::string("0") + std::string::to_string(n);
+		  return std::string("0") + std::to_string(n);
 	  }
-	  return std::string::to_string(n);
+	  return std::to_string(n);
   }
   std::string formatTime( unsigned long ms ){
     unsigned long hours = ms / (1000 * 60 * 60);
@@ -196,17 +208,17 @@ private:
     unsigned long minutes = ms / (1000*60);
     ms -= minutes*60*1000;
     unsigned long seconds = ms / 1000;
-	return format( hours ) + ":" + formar( minutes ) + ":" + format( seconds );
+	return format( hours ) + ":" + format( minutes ) + ":" + format( seconds );
   }
 
-  Field[4] faceField_;
+  Field faceField_[4];
   Field total_;
-  Epd epd_;
-}
+  //Epd epd_;
+};
 
 
 unsigned long time_last;
-unsigned long[4] faceDuration = {0,0,0,0};
+unsigned long faceDuration[4] = {0,0,0,0};
 Display display;
 
 void setup() {
@@ -218,13 +230,45 @@ void setup() {
     while (1);
   }
 
-  display.setup();
+  Serial.print("e-Paper init");
+    if (epd_.Init(lut_full_update) != 0) {
+      Serial.print("e-Paper init failed");
+      return;
+    }
+     
+    //unsigned char* image = new unsigned char[1024];
+    //Paint paint(image, 0, 0);
+    paint.SetRotate( ROTATE_0 );
+    paint.SetWidth(200);
+    paint.SetHeight(200);
+    paint.Clear(WHITE);
+    paint.DrawRectangle(35, 35, 165, 165, BLACK);
+    paint.DrawLine(0, 0, 35, 35, BLACK);
+    paint.DrawLine(0, 200, 35, 200-35, BLACK);
+    paint.DrawLine(200, 0, 200-35, 35, BLACK);
+    paint.DrawLine(200, 200, 200-35, 200-35, BLACK);
+    
+    //for( size_t i=0; i<4; ++i ) faceField_[i].setText( "00:00:00" );
+	  //total_.setText( "00:00:00" );
+    
+    //set it to screen and to frame buffer
+    epd_.SetFrameMemory(paint.GetImage(), 0, 0, paint.GetWidth(), paint.GetHeight());
+    //for( size_t i=0; i<4; ++i ) faceField_[i].draw( epd_, &Font24 );
+    //total_.draw( epd_, &Font24 );
+    epd_.DisplayFrame();
+	
+    epd_.SetFrameMemory(paint.GetImage(), 0, 0, paint.GetWidth(), paint.GetHeight());
+    //delete[] image;
+    //for( size_t i=0; i<4; ++i ) faceField_[i].draw( epd_, &Font24 );
+	  //total_.draw( epd_, &Font24 );
+    epd_.DisplayFrame();
+
+  //display.setup();
   time_last = millis();
-  time_now = millis();
 }
 
 void loop() {
-  
+  /*
   if (IMU.accelerationAvailable())
   {
     float x, y, z, delta = 0.1;
@@ -246,7 +290,7 @@ void loop() {
       Serial.println("Reset Down-Face = Display");
 	  for( size_t i=0; i<4; ++i ){
 	    faceDuration[i]=0;
-		display.setFaceDuration( 0, i );
+		  display.setFaceDuration( 0, static_cast<FACE>(i) );
 	  }
 	  display.setTotalDuration( 0 );
 	  
@@ -260,13 +304,14 @@ void loop() {
   }
   
   unsigned long time_now = millis();
-  faceDuration[ display.upface() ] += time_now-time_last;
-  display.setFaceDuration( faceDuration[ display.upface() ], display.upface() );
+  faceDuration[ static_cast<int>(display.upface()) ] += time_now-time_last;
+  display.setFaceDuration( faceDuration[ static_cast<int>(display.upface()) ], display.upface() );
   time_last = time_now;
 
   display.setTotalDuration( faceDuration[ 0 ]+faceDuration[ 1 ]+faceDuration[ 2 ]+faceDuration[ 3 ] );
   
   //TODO draw temperature & humidity & Date
-
+*/
+Serial.println("TEST");
   delay(100);
 }
