@@ -67,6 +67,14 @@ private:
     int width;
     int height;
     int rotate;
+
+    //TODO why does the sw crash if these field are defined in the above public section???
+public:
+    //store modified rect
+    int minx = 200;
+    int maxx = 0;
+    int miny = 200;
+    int maxy = 0;
 };
 
 #endif

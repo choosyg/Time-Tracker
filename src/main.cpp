@@ -11,6 +11,9 @@ Display display;
 void setup() {
     Serial.begin( 115200 );
 
+    //delay so we can connect to serial for debugging
+    delay(5000);
+
     Serial.println( "Setup: Started" );
     Serial.println( "IMU init" );
     if( !IMU.begin() ) {
@@ -65,7 +68,7 @@ void loop() {
 
     display.setTotalDuration( faceDuration[0] + faceDuration[1] + faceDuration[2] + faceDuration[3] );
 
-    // TODO draw temperature & humidity & Date
+    // TODO draw temperature & humidity
 
     delay( 100 );
 }

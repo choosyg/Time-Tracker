@@ -57,6 +57,12 @@ void Paint::DrawAbsolutePixel(int x, int y, int colored) {
     if (x < 0 || x >= this->width || y < 0 || y >= this->height) {
         return;
     }
+    minx = x < minx ? x: minx;
+    miny = y < miny ? y: miny;
+
+    maxx = x > maxx ? x : maxx;
+    maxy = y > maxy ? y : maxy;
+
     if (IF_INVERT_COLOR) {
         if (colored) {
             image[(x + y * this->width) / 8] |= 0x80 >> (x % 8);

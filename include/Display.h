@@ -3,6 +3,7 @@
 #include "Field.h"
 
 #include "epd/epd1in54.h"
+#include "epd/epdpaint.h"
 
 class Display {
 public:
@@ -17,7 +18,12 @@ public:
     void setUpface( FACE upface );
 
 private:
+    void updateDisplay();
+
     Field faceField_[4];
     Field total_;
+
+    unsigned char image_[500];
+    Paint paint_;
     Epd epd_;
 };
